@@ -2,6 +2,7 @@ package org.multipaz.get_started
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
@@ -19,6 +20,7 @@ import org.multipaz.crypto.Crypto
 import org.multipaz.crypto.EcCurve
 import org.multipaz.crypto.X500Name
 import org.multipaz.crypto.X509CertChain
+import org.multipaz.document.Document
 import org.multipaz.document.DocumentStore
 import org.multipaz.document.buildDocumentStore
 import org.multipaz.documenttype.DocumentTypeRepository
@@ -125,6 +127,27 @@ fun App(promptModel: PromptModel) {
                 "Multipaz Getting Started Sample",
                 "App: Document created with ID: ${document.identifier}"
             )
+
+            val documents = mutableStateListOf<Document>()
+            for (documentId in documentStore.listDocuments()) {
+                documentStore.lookupDocument(documentId).let { document ->
+                    if (document != null && !documents.contains(document)) {
+                        documents.add(document)
+                        Logger.i(
+                            "Multipaz Getting Started Sample",
+                            "Document found: ${document.identifier}, type: ${document.metadata.typeDisplayName}, display name: ${document.metadata.displayName}"
+                        )
+                    }
+                }
+            }
+
+            for (document in documents) {
+                documentStore.deleteDocument(document.identifier)
+                Logger.i(
+                    "Multipaz Getting Started Sample",
+                    "Document deleted: ${document.identifier}"
+                )
+            }
         }
     }
 }
