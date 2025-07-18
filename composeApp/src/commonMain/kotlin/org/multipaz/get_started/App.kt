@@ -6,6 +6,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.multipaz.compose.prompt.PromptDialogs
+import org.multipaz.document.DocumentStore
+import org.multipaz.document.buildDocumentStore
+import org.multipaz.documenttype.DocumentTypeRepository
+import org.multipaz.documenttype.knowntypes.DrivingLicense
 import org.multipaz.prompt.PromptModel
 import org.multipaz.securearea.SecureArea
 import org.multipaz.securearea.SecureAreaRepository
@@ -14,6 +18,9 @@ import org.multipaz.storage.Storage
 lateinit var storage: Storage
 lateinit var secureArea: SecureArea
 lateinit var secureAreaRepository: SecureAreaRepository
+
+lateinit var documentTypeRepository: DocumentTypeRepository
+lateinit var documentStore: DocumentStore
 
 @Composable
 @Preview
@@ -30,6 +37,14 @@ fun App(promptModel: PromptModel) {
             secureAreaRepository = SecureAreaRepository.Builder()
                 .add(secureArea)
                 .build()
+
+            documentTypeRepository = DocumentTypeRepository().apply {
+                addDocumentType(DrivingLicense.getDocumentType())
+            }
+            documentStore = buildDocumentStore(
+                storage = storage,
+                secureAreaRepository = secureAreaRepository
+            ) {}
         }
     }
 }
