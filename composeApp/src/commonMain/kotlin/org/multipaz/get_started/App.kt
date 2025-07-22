@@ -38,6 +38,7 @@ import org.multipaz.crypto.Algorithm
 import org.multipaz.crypto.Crypto
 import org.multipaz.crypto.EcCurve
 import org.multipaz.crypto.X500Name
+import org.multipaz.crypto.X509Cert
 import org.multipaz.crypto.X509CertChain
 import org.multipaz.document.DocumentStore
 import org.multipaz.document.buildDocumentStore
@@ -61,6 +62,7 @@ import org.multipaz.securearea.SecureArea
 import org.multipaz.securearea.SecureAreaRepository
 import org.multipaz.storage.Storage
 import org.multipaz.trustmanagement.TrustManager
+import org.multipaz.trustmanagement.TrustPoint
 import org.multipaz.util.Platform
 import org.multipaz.util.UUID
 import org.multipaz.util.toBase64Url
@@ -77,6 +79,8 @@ lateinit var documentStore: DocumentStore
 
 lateinit var presentmentModel: PresentmentModel
 lateinit var presentmentSource: PresentmentSource
+
+lateinit var readerTrustManager: TrustManager
 
 @Composable
 @Preview
@@ -164,10 +168,36 @@ fun App(promptModel: PromptModel) {
             // todo: add button for deletion
 
             presentmentModel = PresentmentModel().apply { setPromptModel(promptModel) }
+            readerTrustManager = TrustManager().apply {
+                addTrustPoint(
+                    TrustPoint(
+                        certificate = X509Cert.fromPem(
+                            """
+                                -----BEGIN CERTIFICATE-----
+                                MIICUTCCAdegAwIBAgIQppKZHI1iPN290JKEA79OpzAKBggqhkjOPQQDAzArMSkwJwYDVQQDDCBP
+                                V0YgTXVsdGlwYXogVGVzdEFwcCBSZWFkZXIgUm9vdDAeFw0yNDEyMDEwMDAwMDBaFw0zNDEyMDEw
+                                MDAwMDBaMCsxKTAnBgNVBAMMIE9XRiBNdWx0aXBheiBUZXN0QXBwIFJlYWRlciBSb290MHYwEAYH
+                                KoZIzj0CAQYFK4EEACIDYgAE+QDye70m2O0llPXMjVjxVZz3m5k6agT+wih+L79b7jyqUl99sbeU
+                                npxaLD+cmB3HK3twkA7fmVJSobBc+9CDhkh3mx6n+YoH5RulaSWThWBfMyRjsfVODkosHLCDnbPV
+                                o4G/MIG8MA4GA1UdDwEB/wQEAwIBBjASBgNVHRMBAf8ECDAGAQH/AgEAMFYGA1UdHwRPME0wS6BJ
+                                oEeGRWh0dHBzOi8vZ2l0aHViLmNvbS9vcGVud2FsbGV0LWZvdW5kYXRpb24tbGFicy9pZGVudGl0
+                                eS1jcmVkZW50aWFsL2NybDAdBgNVHQ4EFgQUq2Ub4FbCkFPx3X9s5Ie+aN5gyfUwHwYDVR0jBBgw
+                                FoAUq2Ub4FbCkFPx3X9s5Ie+aN5gyfUwCgYIKoZIzj0EAwMDaAAwZQIxANN9WUvI1xtZQmAKS4/D
+                                ZVwofqLNRZL/co94Owi1XH5LgyiBpS3E8xSxE9SDNlVVhgIwKtXNBEBHNA7FKeAxKAzu4+MUf4gz
+                                8jvyFaE0EUVlS2F5tARYQkU6udFePucVdloi
+                                -----END CERTIFICATE-----
+                            """.trimIndent().trim()
+                        ),
+                        displayName = "OWF Multipaz TestApp",
+                        displayIcon = null,
+                        privacyPolicyUrl = "https://apps.multipaz.org"
+                    )
+                )
+            }
             presentmentSource = SimplePresentmentSource(
                 documentStore = documentStore,
                 documentTypeRepository = documentTypeRepository,
-                readerTrustManager = TrustManager(), // fixme
+                readerTrustManager = readerTrustManager,
                 preferSignatureToKeyAgreement = true,
                 domainMdocSignature = "mdoc",
             )
