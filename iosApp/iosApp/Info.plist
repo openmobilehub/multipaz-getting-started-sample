@@ -4,5 +4,10 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+
+	<key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Bluetooth permission is required for proximity presentations</string>
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
 </dict>
 </plist>

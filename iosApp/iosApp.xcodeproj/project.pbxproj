@@ -227,6 +227,10 @@
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				OTHER_LDFLAGS = (
+                    "$(inherited)",
+                    "-lsqlite3",
+                );
 			};
 			name = Debug;
 		};
@@ -316,6 +320,10 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				OTHER_LDFLAGS = (
+                    "$(inherited)",
+                    "-lsqlite3",
+                );
 			};
 			name = Debug;
 		};
@@ -349,6 +357,10 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				OTHER_LDFLAGS = (
+                    "$(inherited)",
+                    "-lsqlite3",
+                );
 			};
 			name = Release;
 		};
