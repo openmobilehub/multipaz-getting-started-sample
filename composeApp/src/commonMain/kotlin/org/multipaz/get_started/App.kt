@@ -190,6 +190,14 @@ fun App(promptModel: PromptModel) {
             // todo: add button for deletion
 
             presentmentModel = PresentmentModel().apply { setPromptModel(promptModel) }
+
+            // Initialize TrustManager
+            // Three certificates are configured to handle different verification scenarios:
+            // 1. OWF Multipaz TestApp - for testing with the Multipaz test application
+            // 2. Multipaz Identity Reader - for APK downloaded from https://apps.multipaz.org/ (production devices with secure boot)
+            //    Certificate available from: https://verifier.multipaz.org/identityreaderbackend/
+            // 3. Multipaz Identity Reader (Untrusted Devices) - for app compiled from source code at https://github.com/davidz25/MpzIdentityReader
+            //    Certificate available from: https://verifier.multipaz.org/identityreaderbackend/
             readerTrustManager = TrustManager().apply {
                 addTrustPoint(
                     TrustPoint(
@@ -215,6 +223,37 @@ fun App(promptModel: PromptModel) {
                         privacyPolicyUrl = "https://apps.multipaz.org"
                     )
                 )
+                // Certificate for APK downloaded from https://apps.multipaz.org/
+                // This should be used for production devices with secure boot (GREEN state)
+                // Certificate source: https://verifier.multipaz.org/identityreaderbackend/
+                addTrustPoint(
+                    TrustPoint(
+                        certificate = X509Cert.fromPem(
+                            """
+                                -----BEGIN CERTIFICATE-----
+                                MIICYTCCAeegAwIBAgIQOSV5JyesOLKHeDc+0qmtuTAKBggqhkjOPQQDAzAzMQswCQYDVQQGDAJV
+                                UzEkMCIGA1UEAwwbTXVsdGlwYXogSWRlbnRpdHkgUmVhZGVyIENBMB4XDTI1MDcwNTEyMjAyMVoX
+                                DTMwMDcwNTEyMjAyMVowMzELMAkGA1UEBgwCVVMxJDAiBgNVBAMMG011bHRpcGF6IElkZW50aXR5
+                                IFJlYWRlciBDQTB2MBAGByqGSM49AgEGBSuBBAAiA2IABD4UX5jabDLuRojEp9rsZkAEbP8Icuj3
+                                qN4wBUYq6UiOkoULMOLUb+78Ygonm+sJRwqyDJ9mxYTjlqliW8PpDfulQZejZo2QGqpB9JPInkrC
+                                Bol5T+0TUs0ghkE5ZQBsVKOBvzCBvDAOBgNVHQ8BAf8EBAMCAQYwEgYDVR0TAQH/BAgwBgEB/wIB
+                                ADBWBgNVHR8ETzBNMEugSaBHhkVodHRwczovL2dpdGh1Yi5jb20vb3BlbndhbGxldC1mb3VuZGF0
+                                aW9uLWxhYnMvaWRlbnRpdHktY3JlZGVudGlhbC9jcmwwHQYDVR0OBBYEFM+kr4eQcxKWLk16F2Rq
+                                zBxFcZshMB8GA1UdIwQYMBaAFM+kr4eQcxKWLk16F2RqzBxFcZshMAoGCCqGSM49BAMDA2gAMGUC
+                                MQCQ+4+BS8yH20KVfSK1TSC/RfRM4M9XNBZ+0n9ePg9ftXUFt5e4lBddK9mL8WznJuoCMFuk8ey4
+                                lKnb4nubv5iPIzwuC7C0utqj7Fs+qdmcWNrSYSiks2OEnjJiap1cPOPk2g==
+                                -----END CERTIFICATE-----
+                           """.trimIndent().trim()
+                        ),
+                        displayName = "Multipaz Identity Reader",
+                        displayIcon = null,
+                        privacyPolicyUrl = "https://verifier.multipaz.org/identityreaderbackend/"
+                    )
+                )
+
+                // Certificate for app compiled from source code at https://github.com/davidz25/MpzIdentityReader
+                // This should be used for development/testing devices or devices with unlocked bootloaders
+                // Certificate source: https://verifier.multipaz.org/identityreaderbackend/
                 addTrustPoint(
                     TrustPoint(
                         certificate = X509Cert.fromPem(
@@ -233,9 +272,9 @@ fun App(promptModel: PromptModel) {
                                 BTcj7+DPvaLJcsloEsj/HaThIsKWqQlQKxgNu1rE/XryAjB/Gq6UErgWKlspp+KpzuAAWaKk+bMj
                                 cM4aKOKOU3itmB+9jXTQ290Dc8MnWVwQBs4=
                                 -----END CERTIFICATE-----
-                            """.trimIndent().trim()
+                           """.trimIndent().trim()
                         ),
-                        displayName = "OWF Multipaz Reader",
+                        displayName = "Multipaz Identity Reader (Untrusted Devices)",
                         displayIcon = null,
                         privacyPolicyUrl = "https://verifier.multipaz.org/identityreaderbackend/"
                     )
