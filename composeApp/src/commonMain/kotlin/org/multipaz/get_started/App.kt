@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Clock
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.encodeToByteString
 import multipazgettingstartedsample.composeapp.generated.resources.Res
@@ -62,12 +61,15 @@ import org.multipaz.securearea.CreateKeySettings
 import org.multipaz.securearea.SecureArea
 import org.multipaz.securearea.SecureAreaRepository
 import org.multipaz.storage.Storage
-import org.multipaz.trustmanagement.TrustManager
-import org.multipaz.trustmanagement.TrustPoint
+import org.multipaz.trustmanagement.TrustManagerLocal
+import org.multipaz.trustmanagement.TrustMetadata
+import org.multipaz.trustmanagement.TrustPointAlreadyExistsException
 import org.multipaz.util.Platform
 import org.multipaz.util.UUID
 import org.multipaz.util.toBase64Url
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
+import kotlin.time.ExperimentalTime
 
 // Storage
 lateinit var storage: Storage
@@ -81,8 +83,9 @@ lateinit var documentStore: DocumentStore
 lateinit var presentmentModel: PresentmentModel
 lateinit var presentmentSource: PresentmentSource
 
-lateinit var readerTrustManager: TrustManager
+lateinit var readerTrustManager: TrustManagerLocal
 
+@OptIn(ExperimentalTime::class)
 @Composable
 @Preview
 fun App(promptModel: PromptModel) {
@@ -97,8 +100,8 @@ fun App(promptModel: PromptModel) {
         LaunchedEffect(null) {
 
             // Storage
-            storage = Platform.getNonBackedUpStorage()
-            secureArea = Platform.getSecureArea(storage)
+            storage = Platform.nonBackedUpStorage
+            secureArea = Platform.getSecureArea()
             secureAreaRepository = SecureAreaRepository.Builder().add(secureArea).build()
 
             // DocumentStore
@@ -189,20 +192,19 @@ fun App(promptModel: PromptModel) {
             // todo: add button to list docs
             // todo: add button for deletion
 
-            presentmentModel = PresentmentModel().apply { setPromptModel(promptModel) }
-
             // Initialize TrustManager
             // Three certificates are configured to handle different verification scenarios:
             // 1. OWF Multipaz TestApp - for testing with the Multipaz test application
             // 2. Multipaz Identity Reader - for APK downloaded from https://apps.multipaz.org/ (production devices with secure boot)
-            //    Certificate available from: https://verifier.multipaz.org/identityreaderbackend/
+            //    Certificate available from: https://verifier.multipaz.org/identityreaderbackend/readerRootCert
             // 3. Multipaz Identity Reader (Untrusted Devices) - for app compiled from source code at https://github.com/davidz25/MpzIdentityReader
-            //    Certificate available from: https://verifier.multipaz.org/identityreaderbackend/
-            readerTrustManager = TrustManager().apply {
-                addTrustPoint(
-                    TrustPoint(
-                        certificate = X509Cert.fromPem(
-                            """
+            //    Certificate available from: https://verifier.multipaz.org/identityreaderbackend/readerRootCertUntrustedDevices
+            readerTrustManager = TrustManagerLocal(storage = storage, identifier = "reader")
+
+            try {
+                readerTrustManager.addX509Cert(
+                    certificate = X509Cert.fromPem(
+                        """
                                 -----BEGIN CERTIFICATE-----
                                 MIICUTCCAdegAwIBAgIQppKZHI1iPN290JKEA79OpzAKBggqhkjOPQQDAzArMSkwJwYDVQQDDCBP
                                 V0YgTXVsdGlwYXogVGVzdEFwcCBSZWFkZXIgUm9vdDAeFw0yNDEyMDEwMDAwMDBaFw0zNDEyMDEw
@@ -217,19 +219,23 @@ fun App(promptModel: PromptModel) {
                                 8jvyFaE0EUVlS2F5tARYQkU6udFePucVdloi
                                 -----END CERTIFICATE-----
                             """.trimIndent().trim()
-                        ),
+                    ),
+                    metadata = TrustMetadata(
                         displayName = "OWF Multipaz TestApp",
-                        displayIcon = null,
                         privacyPolicyUrl = "https://apps.multipaz.org"
                     )
                 )
-                // Certificate for APK downloaded from https://apps.multipaz.org/
-                // This should be used for production devices with secure boot (GREEN state)
-                // Certificate source: https://verifier.multipaz.org/identityreaderbackend/
-                addTrustPoint(
-                    TrustPoint(
-                        certificate = X509Cert.fromPem(
-                            """
+            } catch (e: TrustPointAlreadyExistsException) {
+                e.printStackTrace()
+            }
+
+            // Certificate for APK downloaded from https://apps.multipaz.org/
+            // This should be used for production devices with secure boot (GREEN state)
+            // Certificate source: https://verifier.multipaz.org/identityreaderbackend/readerRootCert
+            try {
+                readerTrustManager.addX509Cert(
+                    certificate = X509Cert.fromPem(
+                        """
                                 -----BEGIN CERTIFICATE-----
                                 MIICYTCCAeegAwIBAgIQOSV5JyesOLKHeDc+0qmtuTAKBggqhkjOPQQDAzAzMQswCQYDVQQGDAJV
                                 UzEkMCIGA1UEAwwbTXVsdGlwYXogSWRlbnRpdHkgUmVhZGVyIENBMB4XDTI1MDcwNTEyMjAyMVoX
@@ -244,20 +250,23 @@ fun App(promptModel: PromptModel) {
                                 lKnb4nubv5iPIzwuC7C0utqj7Fs+qdmcWNrSYSiks2OEnjJiap1cPOPk2g==
                                 -----END CERTIFICATE-----
                            """.trimIndent().trim()
-                        ),
+                    ),
+                    metadata = TrustMetadata(
                         displayName = "Multipaz Identity Reader",
-                        displayIcon = null,
                         privacyPolicyUrl = "https://verifier.multipaz.org/identityreaderbackend/"
                     )
                 )
+            } catch (e: TrustPointAlreadyExistsException) {
+                e.printStackTrace()
+            }
 
-                // Certificate for app compiled from source code at https://github.com/davidz25/MpzIdentityReader
-                // This should be used for development/testing devices or devices with unlocked bootloaders
-                // Certificate source: https://verifier.multipaz.org/identityreaderbackend/
-                addTrustPoint(
-                    TrustPoint(
-                        certificate = X509Cert.fromPem(
-                            """
+            // Certificate for app compiled from source code at https://github.com/davidz25/MpzIdentityReader
+            // This should be used for development/testing devices or devices with unlocked bootloaders
+            // Certificate source: https://verifier.multipaz.org/identityreaderbackend/readerRootCertUntrustedDevices
+            try {
+                readerTrustManager.addX509Cert(
+                    certificate = X509Cert.fromPem(
+                        """
                                 -----BEGIN CERTIFICATE-----
                                 MIICiTCCAg+gAwIBAgIQQd/7PXEzsmI+U14J2cO1bjAKBggqhkjOPQQDAzBHMQswCQYDVQQGDAJV
                                 UzE4MDYGA1UEAwwvTXVsdGlwYXogSWRlbnRpdHkgUmVhZGVyIENBIChVbnRydXN0ZWQgRGV2aWNl
@@ -273,13 +282,17 @@ fun App(promptModel: PromptModel) {
                                 cM4aKOKOU3itmB+9jXTQ290Dc8MnWVwQBs4=
                                 -----END CERTIFICATE-----
                            """.trimIndent().trim()
-                        ),
+                    ),
+                    metadata = TrustMetadata(
                         displayName = "Multipaz Identity Reader (Untrusted Devices)",
-                        displayIcon = null,
                         privacyPolicyUrl = "https://verifier.multipaz.org/identityreaderbackend/"
                     )
                 )
+            } catch (e: TrustPointAlreadyExistsException) {
+                e.printStackTrace()
             }
+
+            presentmentModel = PresentmentModel().apply { setPromptModel(promptModel) }
             presentmentSource = SimplePresentmentSource(
                 documentStore = documentStore,
                 documentTypeRepository = documentTypeRepository,
