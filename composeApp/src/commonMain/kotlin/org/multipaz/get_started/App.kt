@@ -10,7 +10,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.encodeToByteString
@@ -56,7 +57,6 @@ import org.multipaz.models.presentment.MdocPresentmentMechanism
 import org.multipaz.models.presentment.PresentmentModel
 import org.multipaz.models.presentment.PresentmentSource
 import org.multipaz.models.presentment.SimplePresentmentSource
-import org.multipaz.prompt.PromptModel
 import org.multipaz.securearea.CreateKeySettings
 import org.multipaz.securearea.SecureArea
 import org.multipaz.securearea.SecureAreaRepository
@@ -64,44 +64,40 @@ import org.multipaz.storage.Storage
 import org.multipaz.trustmanagement.TrustManagerLocal
 import org.multipaz.trustmanagement.TrustMetadata
 import org.multipaz.trustmanagement.TrustPointAlreadyExistsException
-import org.multipaz.util.Platform
 import org.multipaz.util.UUID
 import org.multipaz.util.toBase64Url
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.ExperimentalTime
 
-// Storage
-lateinit var storage: Storage
-lateinit var secureArea: SecureArea
-lateinit var secureAreaRepository: SecureAreaRepository
+class App {
 
-// DocumentStore
-lateinit var documentTypeRepository: DocumentTypeRepository
-lateinit var documentStore: DocumentStore
+    // Storage
+    lateinit var storage: Storage
+    lateinit var secureArea: SecureArea
+    lateinit var secureAreaRepository: SecureAreaRepository
 
-lateinit var presentmentModel: PresentmentModel
-lateinit var presentmentSource: PresentmentSource
+    // DocumentStore
+    lateinit var documentTypeRepository: DocumentTypeRepository
+    lateinit var documentStore: DocumentStore
 
-lateinit var readerTrustManager: TrustManagerLocal
+    lateinit var presentmentModel: PresentmentModel
+    lateinit var presentmentSource: PresentmentSource
 
-@OptIn(ExperimentalTime::class)
-@Composable
-@Preview
-fun App(promptModel: PromptModel) {
-    MaterialTheme {
-        // This ensures all prompts inherit the app's main style
-        PromptDialogs(promptModel)
-        // ... rest of your UI
+    lateinit var readerTrustManager: TrustManagerLocal
 
-        // to track the initialization
-        val isInitialized = remember { mutableStateOf(false) }
+    val appName = "Multipaz Getting Started Sample"
+    val appIcon = Res.drawable.compose_multiplatform
 
-        LaunchedEffect(null) {
+    var isInitialized = false
+
+    @OptIn(ExperimentalTime::class)
+    suspend fun init() {
+        if (!isInitialized) {
 
             // Storage
-            storage = Platform.nonBackedUpStorage
-            secureArea = Platform.getSecureArea()
+            storage = org.multipaz.util.Platform.nonBackedUpStorage
+            secureArea = org.multipaz.util.Platform.getSecureArea()
             secureAreaRepository = SecureAreaRepository.Builder().add(secureArea).build()
 
             // DocumentStore
@@ -188,9 +184,6 @@ fun App(promptModel: PromptModel) {
                     validUntil = validUntil,
                 )
             }
-
-            // todo: add button to list docs
-            // todo: add button for deletion
 
             // Initialize TrustManager
             // Three certificates are configured to handle different verification scenarios:
@@ -301,145 +294,186 @@ fun App(promptModel: PromptModel) {
                 domainMdocSignature = "mdoc",
             )
 
-            isInitialized.value = true
+            isInitialized = true
+        }
+    }
+
+    @Composable
+    @Preview
+    fun Content() {
+
+        // to track initialization
+        val isInitialized = remember { mutableStateOf(false) }
+
+        if (!isInitialized.value) {
+            CoroutineScope(Dispatchers.Main).launch {
+                init()
+                isInitialized.value = true
+            }
+
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = "Initializing...")
+            }
+            return
         }
 
-        val blePermissionState = rememberBluetoothPermissionState()
-        val coroutineScope = rememberCoroutineScope { promptModel }
+        MaterialTheme {
+            // This ensures all prompts inherit the app's main style
+            PromptDialogs(promptModel)
 
+            val blePermissionState = rememberBluetoothPermissionState()
+            val coroutineScope = rememberCoroutineScope { promptModel }
+
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+
+                // todo: add button to list docs
+                // todo: add button for deletion
+
+                // Bluetooth Permission
+                if (!blePermissionState.isGranted) {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                blePermissionState.launchPermissionRequest()
+                            }
+                        }
+                    ) {
+                        Text("Request BLE permissions")
+                    }
+                } else {
+                    val deviceEngagement = remember { mutableStateOf<ByteString?>(null) }
+                    val state = presentmentModel.state.collectAsState()
+                    when (state.value) {
+                        PresentmentModel.State.IDLE -> {
+                            ShowQrButton(deviceEngagement)
+                        }
+
+                        PresentmentModel.State.CONNECTING -> {
+                            ShowQrCode(deviceEngagement)
+                        }
+
+                        PresentmentModel.State.WAITING_FOR_SOURCE,
+                        PresentmentModel.State.PROCESSING,
+                        PresentmentModel.State.WAITING_FOR_DOCUMENT_SELECTION,
+                        PresentmentModel.State.WAITING_FOR_CONSENT,
+                        PresentmentModel.State.COMPLETED -> {
+                            Presentment(
+                                appName = "Multipaz Getting Started Sample",
+                                appIconPainter = painterResource(Res.drawable.compose_multiplatform),
+                                presentmentModel = presentmentModel,
+                                presentmentSource = presentmentSource,
+                                documentTypeRepository = documentTypeRepository,
+                                onPresentmentComplete = {
+                                    presentmentModel.reset()
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    companion object {
+        val promptModel = org.multipaz.util.Platform.promptModel
+
+        private var app: App? = null
+        fun getInstance(): App {
+            if (app == null) {
+                app = App()
+            }
+            return app!!
+        }
+    }
+
+    @Composable
+    private fun ShowQrButton(showQrCode: MutableState<ByteString?>) {
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Button(onClick = {
+                presentmentModel.reset()
+                presentmentModel.setConnecting()
+                presentmentModel.presentmentScope.launch() {
+                    val connectionMethods = listOf(
+                        MdocConnectionMethodBle(
+                            supportsPeripheralServerMode = false,
+                            supportsCentralClientMode = true,
+                            peripheralServerModeUuid = null,
+                            centralClientModeUuid = UUID.randomUUID(),
+                        )
+                    )
+                    val eDeviceKey = Crypto.createEcPrivateKey(EcCurve.P256)
+                    val advertisedTransports = connectionMethods.advertise(
+                        role = MdocRole.MDOC,
+                        transportFactory = MdocTransportFactory.Default,
+                        options = MdocTransportOptions(bleUseL2CAP = true),
+                    )
+                    val engagementGenerator = EngagementGenerator(
+                        eSenderKey = eDeviceKey.publicKey,
+                        version = "1.0"
+                    )
+                    engagementGenerator.addConnectionMethods(advertisedTransports.map {
+                        it.connectionMethod
+                    })
+                    val encodedDeviceEngagement = ByteString(engagementGenerator.generate())
+                    showQrCode.value = encodedDeviceEngagement
+                    val transport = advertisedTransports.waitForConnection(
+                        eSenderKey = eDeviceKey.publicKey,
+                        coroutineScope = presentmentModel.presentmentScope
+                    )
+                    presentmentModel.setMechanism(
+                        MdocPresentmentMechanism(
+                            transport = transport,
+                            eDeviceKey = eDeviceKey,
+                            encodedDeviceEngagement = encodedDeviceEngagement,
+                            handover = Simple.NULL,
+                            engagementDuration = null,
+                            allowMultipleRequests = false
+                        )
+                    )
+                    showQrCode.value = null
+                }
+            }) {
+                Text("Present mDL via QR")
+            }
+        }
+    }
 
-            // Bluetooth Permission
-            if (!blePermissionState.isGranted) {
+    @Composable
+    private fun ShowQrCode(deviceEngagement: MutableState<ByteString?>) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (deviceEngagement.value != null) {
+                val mdocUrl = "mdoc:" + deviceEngagement.value!!.toByteArray().toBase64Url()
+                val qrCodeBitmap = remember { generateQrCode(mdocUrl) }
+                Text(text = "Present QR code to mdoc reader")
+                Image(
+                    modifier = Modifier.fillMaxWidth(),
+                    bitmap = qrCodeBitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.FillWidth
+                )
                 Button(
                     onClick = {
-                        coroutineScope.launch {
-                            blePermissionState.launchPermissionRequest()
-                        }
+                        presentmentModel.reset()
                     }
                 ) {
-                    Text("Request BLE permissions")
+                    Text("Cancel")
                 }
-            } else if (isInitialized.value) {
-                val deviceEngagement = remember { mutableStateOf<ByteString?>(null) }
-                val state = presentmentModel.state.collectAsState()
-                when (state.value) {
-                    PresentmentModel.State.IDLE -> {
-                        showQrButton(deviceEngagement)
-                    }
-
-                    PresentmentModel.State.CONNECTING -> {
-                        showQrCode(deviceEngagement)
-                    }
-
-                    PresentmentModel.State.WAITING_FOR_SOURCE,
-                    PresentmentModel.State.PROCESSING,
-                    PresentmentModel.State.WAITING_FOR_DOCUMENT_SELECTION,
-                    PresentmentModel.State.WAITING_FOR_CONSENT,
-                    PresentmentModel.State.COMPLETED -> {
-                        Presentment(
-                            appName = "Multipaz Getting Started Sample",
-                            appIconPainter = painterResource(Res.drawable.compose_multiplatform),
-                            presentmentModel = presentmentModel,
-                            presentmentSource = presentmentSource,
-                            documentTypeRepository = documentTypeRepository,
-                            onPresentmentComplete = {
-                                presentmentModel.reset()
-                            },
-                        )
-                    }
-                }
-            } else {
-                // Show loading state while initializing
-                Text("Initializing...")
-            }
-        }
-    }
-}
-
-@Composable
-private fun showQrButton(showQrCode: MutableState<ByteString?>) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Button(onClick = {
-            presentmentModel.reset()
-            presentmentModel.setConnecting()
-            presentmentModel.presentmentScope.launch() {
-                val connectionMethods = listOf(
-                    MdocConnectionMethodBle(
-                        supportsPeripheralServerMode = false,
-                        supportsCentralClientMode = true,
-                        peripheralServerModeUuid = null,
-                        centralClientModeUuid = UUID.randomUUID(),
-                    )
-                )
-                val eDeviceKey = Crypto.createEcPrivateKey(EcCurve.P256)
-                val advertisedTransports = connectionMethods.advertise(
-                    role = MdocRole.MDOC,
-                    transportFactory = MdocTransportFactory.Default,
-                    options = MdocTransportOptions(bleUseL2CAP = true),
-                )
-                val engagementGenerator = EngagementGenerator(
-                    eSenderKey = eDeviceKey.publicKey,
-                    version = "1.0"
-                )
-                engagementGenerator.addConnectionMethods(advertisedTransports.map {
-                    it.connectionMethod
-                })
-                val encodedDeviceEngagement = ByteString(engagementGenerator.generate())
-                showQrCode.value = encodedDeviceEngagement
-                val transport = advertisedTransports.waitForConnection(
-                    eSenderKey = eDeviceKey.publicKey,
-                    coroutineScope = presentmentModel.presentmentScope
-                )
-                presentmentModel.setMechanism(
-                    MdocPresentmentMechanism(
-                        transport = transport,
-                        eDeviceKey = eDeviceKey,
-                        encodedDeviceEngagement = encodedDeviceEngagement,
-                        handover = Simple.NULL,
-                        engagementDuration = null,
-                        allowMultipleRequests = false
-                    )
-                )
-                showQrCode.value = null
-            }
-        }) {
-            Text("Present mDL via QR")
-        }
-    }
-}
-
-@Composable
-private fun showQrCode(deviceEngagement: MutableState<ByteString?>) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        if (deviceEngagement.value != null) {
-            val mdocUrl = "mdoc:" + deviceEngagement.value!!.toByteArray().toBase64Url()
-            val qrCodeBitmap = remember { generateQrCode(mdocUrl) }
-            Text(text = "Present QR code to mdoc reader")
-            Image(
-                modifier = Modifier.fillMaxWidth(),
-                bitmap = qrCodeBitmap,
-                contentDescription = null,
-                contentScale = ContentScale.FillWidth
-            )
-            Button(
-                onClick = {
-                    presentmentModel.reset()
-                }
-            ) {
-                Text("Cancel")
             }
         }
     }
