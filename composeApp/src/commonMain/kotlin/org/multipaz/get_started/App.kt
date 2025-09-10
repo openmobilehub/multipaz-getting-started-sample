@@ -10,9 +10,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -21,7 +24,9 @@ import coil3.ImageLoader
 import coil3.compose.LocalPlatformContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.encodeToByteString
 import multipazgettingstartedsample.composeapp.generated.resources.Res
 import multipazgettingstartedsample.composeapp.generated.resources.compose_multiplatform
@@ -41,6 +46,8 @@ import org.multipaz.crypto.EcPrivateKey
 import org.multipaz.crypto.X500Name
 import org.multipaz.crypto.X509Cert
 import org.multipaz.crypto.X509CertChain
+import org.multipaz.document.AbstractDocumentMetadata
+import org.multipaz.document.DocumentMetadata
 import org.multipaz.document.DocumentStore
 import org.multipaz.document.buildDocumentStore
 import org.multipaz.documenttype.DocumentTypeRepository
@@ -51,13 +58,20 @@ import org.multipaz.mdoc.util.MdocUtil
 import org.multipaz.models.presentment.PresentmentModel
 import org.multipaz.models.presentment.PresentmentSource
 import org.multipaz.models.presentment.SimplePresentmentSource
+import org.multipaz.models.provisioning.ProvisioningModel
+import org.multipaz.provisioning.Display
 import org.multipaz.securearea.CreateKeySettings
 import org.multipaz.securearea.SecureArea
 import org.multipaz.securearea.SecureAreaRepository
 import org.multipaz.storage.Storage
+import org.multipaz.testapp.provisioning.ProvisioningSupport
+import org.multipaz.testapp.provisioning.ProvisioningSupport.Companion.HAIP_URL_SCHEME
+import org.multipaz.testapp.provisioning.ProvisioningSupport.Companion.OID4VCI_CREDENTIAL_OFFER_URL_SCHEME
+import org.multipaz.testapp.ui.ProvisioningTestScreen
 import org.multipaz.trustmanagement.TrustManagerLocal
 import org.multipaz.trustmanagement.TrustMetadata
 import org.multipaz.trustmanagement.TrustPointAlreadyExistsException
+import org.multipaz.util.Platform
 import org.multipaz.util.UUID
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -79,6 +93,10 @@ class App {
 
     lateinit var readerTrustManager: TrustManagerLocal
 
+    lateinit var provisioningModel: ProvisioningModel
+    val provisioningSupport = ProvisioningSupport()
+    private val credentialOffers = Channel<String>()
+
     val appName = "Multipaz Getting Started Sample"
     val appIcon = Res.drawable.compose_multiplatform
 
@@ -89,8 +107,8 @@ class App {
         if (!isInitialized) {
 
             // Storage
-            storage = org.multipaz.util.Platform.nonBackedUpStorage
-            secureArea = org.multipaz.util.Platform.getSecureArea()
+            storage = Platform.nonBackedUpStorage
+            secureArea = Platform.getSecureArea()
             secureAreaRepository = SecureAreaRepository.Builder().add(secureArea).build()
 
             // DocumentStore
@@ -287,6 +305,16 @@ class App {
                 domainMdocSignature = "mdoc",
             )
 
+            provisioningModel = ProvisioningModel(
+                documentStore = documentStore,
+                secureArea = Platform.getSecureArea(),
+                httpClient = io.ktor.client.HttpClient() {
+                    followRedirects = false
+                },
+                promptModel = Platform.promptModel,
+                documentMetadataInitializer = ::initializeDocumentMetadata
+            )
+
             isInitialized = true
         }
     }
@@ -323,9 +351,27 @@ class App {
             // This ensures all prompts inherit the app's main style
             PromptDialogs(promptModel)
 
+            var isProvisioning by remember { mutableStateOf(false) }
+
             val blePermissionState = rememberBluetoothPermissionState()
             val bleEnabledState = rememberBluetoothEnabledState()
             val coroutineScope = rememberCoroutineScope { promptModel }
+
+            val stableProvisioningModel = remember(provisioningModel) { provisioningModel }
+            val stableProvisioningSupport = remember(provisioningSupport) { provisioningSupport }
+
+            // Use the working pattern from identity-credential project
+            LaunchedEffect(true) {
+                while (true) {
+                    val credentialOffer = credentialOffers.receive()
+                    stableProvisioningModel.launchOpenID4VCIProvisioning(
+                        offerUri = credentialOffer,
+                        clientPreferences = ProvisioningSupport.OPENID4VCI_CLIENT_PREFERENCES,
+                        backend = stableProvisioningSupport
+                    )
+                    isProvisioning = true
+                }
+            }
 
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -336,8 +382,13 @@ class App {
                 // todo: add button to list docs
                 // todo: add button for deletion
 
+                if (isProvisioning)
+                    ProvisioningTestScreen(
+                        stableProvisioningModel,
+                        stableProvisioningSupport,
+                    )
                 // Bluetooth Permission
-                if (!blePermissionState.isGranted) {
+                else if (!blePermissionState.isGranted) {
                     Button(
                         onClick = {
                             coroutineScope.launch {
@@ -376,7 +427,7 @@ class App {
     }
 
     companion object {
-        val promptModel = org.multipaz.util.Platform.promptModel
+        val promptModel = Platform.promptModel
 
         private var app: App? = null
         fun getInstance(): App {
@@ -436,6 +487,41 @@ class App {
                 }
             ) {
                 Text("Cancel")
+            }
+        }
+    }
+
+    private suspend fun initializeDocumentMetadata(
+        metadata: AbstractDocumentMetadata,
+        credentialDisplay: Display,
+        issuerDisplay: Display
+    ) {
+        (metadata as DocumentMetadata).setMetadata(
+            displayName = credentialDisplay.text,
+            typeDisplayName = credentialDisplay.text,
+            cardArt = credentialDisplay.logo
+                ?: ByteString(Res.readBytes("drawable/profile.png")),
+            issuerLogo = issuerDisplay.logo,
+            other = null
+        )
+    }
+
+    /**
+     * Handle a link (either a app link, universal link, or custom URL schema link).
+     */
+    fun handleUrl(url: String) {
+        if (url.startsWith(OID4VCI_CREDENTIAL_OFFER_URL_SCHEME)
+            || url.startsWith(HAIP_URL_SCHEME)
+        ) {
+            val queryIndex = url.indexOf('?')
+            if (queryIndex >= 0) {
+                CoroutineScope(Dispatchers.Default).launch {
+                    credentialOffers.send(url)
+                }
+            }
+        } else if (url.startsWith(ProvisioningSupport.APP_LINK_BASE_URL)) {
+            CoroutineScope(Dispatchers.Default).launch {
+                provisioningSupport.processAppLinkInvocation(url)
             }
         }
     }
