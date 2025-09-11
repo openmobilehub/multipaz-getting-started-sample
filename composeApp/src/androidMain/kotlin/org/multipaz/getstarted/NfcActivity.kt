@@ -1,4 +1,4 @@
-package org.multipaz.get_started
+package org.multipaz.getstarted
 
 import androidx.compose.runtime.Composable
 import org.multipaz.compose.mdoc.MdocNfcPresentmentActivity
