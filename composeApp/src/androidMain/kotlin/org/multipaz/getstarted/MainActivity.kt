@@ -1,4 +1,4 @@
-package org.multipaz.get_started
+package org.multipaz.getstarted
 
 import android.content.Intent
 import android.os.Bundle

@@ -1,4 +1,4 @@
-package org.multipaz.get_started
+package org.multipaz.getstarted
 
 import org.multipaz.compose.mdoc.MdocNdefService
 import org.multipaz.crypto.EcCurve

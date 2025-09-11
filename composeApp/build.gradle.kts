@@ -68,11 +68,11 @@ kotlin {
 }
 
 android {
-    namespace = "org.multipaz.get_started"
+    namespace = "org.multipaz.getstarted"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "org.multipaz.get_started"
+        applicationId = "org.multipaz.getstarted"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1

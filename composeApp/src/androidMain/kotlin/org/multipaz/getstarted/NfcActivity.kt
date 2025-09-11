@@ -1,4 +1,4 @@
-package org.multipaz.get_started
+package org.multipaz.getstarted
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable

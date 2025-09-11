@@ -1,4 +1,4 @@
-package org.multipaz.get_started
+package org.multipaz.getstarted
 
 interface Platform {
     val name: String
